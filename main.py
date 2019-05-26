@@ -82,3 +82,4 @@ if __name__ == '__main__':
     os.system('touch results.geojson')
     with open('results.geojson', 'w') as res:
         geojson.dump(results, res)
+
