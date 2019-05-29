@@ -8,7 +8,7 @@ import json
 # generates test .pos file with ~4.2 Mb size
 # and multiple .json files
 if __name__ == '__main__':
-    file_name = f'test-pos-file.pos'
+    file_name = 'location.pos'
     json_name = 'test-json-{}.json'
 
     if not os.path.exists(os.path.dirname(os.path.abspath(__file__)) + f'/{file_name}'):

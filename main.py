@@ -130,17 +130,19 @@ if __name__ == '__main__':
         else:
             args_dir = sys.argv[1]
 
-        pos_files = [f'{os.path.abspath(args_dir)}/{file}' for file in os.listdir(args_dir) if file.endswith('.pos')]
         json_files = [f'{os.path.abspath(args_dir)}/{file}' for file in os.listdir(args_dir) if file.endswith('.json')]
 
-        if not pos_files:
-            print('POS file not found in directory: ', args_dir)
+        if not os.path.exists(os.path.abspath(args_dir) + '/location.pos'):
+            print('location.pos not found in directory')
             return
+        else:
+            pos_file = os.path.abspath(args_dir) + '/location.pos'
+
         if not json_files:
             print('JSON files not found in directory: ', args_dir)
             return
 
-        pos_data = load_pos_data(pos_files[0])
+        pos_data = load_pos_data(pos_file)
         features = find_and_load_features(json_files, pos_data)
         dump_to_geojson(features)
 
