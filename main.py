@@ -4,6 +4,7 @@ import time
 import geojson
 import datetime
 import numpy as np
+import threading
 
 from geojson import Feature, Point
 
@@ -18,7 +19,6 @@ def timeit(method):
         if method.__name__ not in timeit_stats.keys():
             timeit_stats.setdefault(method.__name__, [])
         timeit_stats[method.__name__].append((te - ts) * 1000)
-
         return result
 
     return timed
@@ -39,48 +39,55 @@ def load_pos_data(filename: str) -> list:
 
 
 @timeit
-def find_nearest_index(value: int, array: list):
+def find_nearest_number(value: int, array: list) -> int:
     idx = (np.abs(array - value)).argmin()
-    return idx
+    return int(array[idx])
 
 
 @timeit
 def find_and_load_features(json_files, pos_data):
-    features = []
-    features_index = 0
+    outer_features = []
+    threads = []
 
     for file in json_files:
         if os.stat(file).st_size == 0:
             continue
 
-        with open(file) as json_file:
-            json_data = geojson.load(json_file)
+        @timeit
+        def run_find_nearest_numbers_in_threads(pos_data: list, json_file: str) -> None:
+            with open(json_file) as json_file:
+                json_data = geojson.load(json_file)
+            json_timestamps = np.asanyarray(list(map(lambda d: d[1], json_data['timestamps'])))
 
-        json_timestamps = np.asanyarray(list(map(lambda d: d[1], json_data['timestamps'])))
-        for item in pos_data:
-            nearest_index = find_nearest_index(item[-1], json_timestamps)
-            if abs(json_timestamps[nearest_index] - item[-1]) < 1_000_000_000:  # 1_000_000_000 nanos = 1 sec
-                print('-> ', convert_to_datetime(json_timestamps[nearest_index]), convert_to_datetime(item[-1]))
-                features.append(Feature(
-                    geometry=Point((float(item[2]), float(item[3]))),
-                    properties={"index": features_index,
-                                "timestamp": json_data['timestamps'][nearest_index][1]}
-                ))
-                features_index += 1
+            for item in pos_data:
+                nearest_number = find_nearest_number(item[-1], json_timestamps)
+                if abs(nearest_number - item[-1]) < 1_000_000_000:  # 1_000_000_000 nanos = 1 sec
+                    outer_features.append(Feature(
+                        geometry=Point((float(item[2]), float(item[3]))),
+                        properties={"index": len(outer_features),
+                                    "timestamp": nearest_number}
+                    ))
 
-    return features, features_index
+        t = threading.Thread(target=run_find_nearest_numbers_in_threads, args=(pos_data, file))
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    return outer_features
 
 
 @timeit
-def dump_to_geojson(features, features_index):
+def dump_to_geojson(features: list) -> None:
     results = {
         "type": "FeatureCollection",
-        "filename": '',
-        "device_alias": '',
-        "beginning": 1544027995920418691,
-        "end": 1544027995920418692,
+        "filename": 'filename',
+        "device_alias": 'device_alias',
+        "beginning": features[0]['properties']['timestamp'],
+        "end": features[-1]['properties']['timestamp'],
         "features": features,
-        "total": features_index
+        "total": len(features)
     }
 
     if results['features']:
@@ -107,8 +114,8 @@ def convert_to_nanos(datetime_val: str) -> int:
 @timeit
 def convert_to_datetime(nanos: int) -> str:
     dt = datetime.datetime.fromtimestamp(nanos // 1_000_000_000)
-    s = dt.strftime('%Y-%m-%d %H:%M:%S')
-    s += '.' + str(int(nanos % 1000000000)).zfill(9)
+    s = dt.strftime('%Y/%m/%d %H:%M:%S')
+    s += '.' + str(int(nanos % 1_000_000_000))
     return s
 
 
@@ -134,10 +141,8 @@ if __name__ == '__main__':
             return
 
         pos_data = load_pos_data(pos_files[0])
-        features, features_index = find_and_load_features(json_files, pos_data)
-        dump_to_geojson(features, features_index)
-
-        print("features: ", len(features))
+        features = find_and_load_features(json_files, pos_data)
+        dump_to_geojson(features)
 
     run()
 
